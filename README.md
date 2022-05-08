@@ -13,7 +13,7 @@ npm install clickhouse-buffer
 ```typescript
 import {ClickhouseBuffer, DEFAULT_DATABASE} from "clickhouse-buffer";
 
-(async ()=>{
+(async () => {
     const database = DEFAULT_DATABASE;
     const table = 'events';
 
