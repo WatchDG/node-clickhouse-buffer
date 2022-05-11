@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "module": "commonjs",
+    "moduleResolution": "node",
     "target": "es2021",
     "rootDir": "src",
     "outDir": "lib",
