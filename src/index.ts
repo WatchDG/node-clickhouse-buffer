@@ -18,6 +18,7 @@ interface Options {
     table: string;
     maxRowsInMemory?: number;
     maxRowsPerFile?: number;
+    maxFilesPerLoad?: number;
     directoryPath: string;
     fsMode?: number;
     conditions?: Conditions;
@@ -33,6 +34,7 @@ export class ClickhouseBuffer {
 
     private readonly maxRowsPerFile: number = 1000;
     private readonly maxRowsInMemory: number = 1000;
+    private readonly maxFilesPerLoad: number = 100;
 
     private rows: string[] = [];
     private readonly files: string[] = [];
@@ -73,7 +75,7 @@ export class ClickhouseBuffer {
         const rows = self.rows.splice(0, self.rows.length);
         ClickhouseBuffer.flushToFiles(self, rows)
             .finally(function () {
-                const numOfFiles = self.files.length;
+                const numOfFiles = self.files.length >= self.maxFilesPerLoad ? self.maxFilesPerLoad : self.files.length;
                 if (!(numOfFiles > 0)) {
                     return;
                 }
@@ -123,16 +125,19 @@ export class ClickhouseBuffer {
     }
 
     constructor(options: Options) {
-        if (options?.maxRowsInMemory) {
+        if (options.maxRowsInMemory) {
             this.maxRowsInMemory = options.maxRowsInMemory;
         }
-        if (options?.maxRowsPerFile) {
+        if (options.maxRowsPerFile) {
             this.maxRowsPerFile = options.maxRowsPerFile;
         }
-        if (options?.fsMode) {
+        if (options.maxFilesPerLoad) {
+            this.maxFilesPerLoad = options.maxFilesPerLoad;
+        }
+        if (options.fsMode) {
             this.fsMode = options.fsMode;
         }
-        if (options?.conditions) {
+        if (options.conditions) {
             this.conditions = options.conditions;
         }
 
