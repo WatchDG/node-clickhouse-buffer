@@ -68,20 +68,13 @@ export class ClickhouseBuffer {
     }
 
     private static isConditionMet(self: ClickhouseBuffer): boolean {
-        return self.conditions?.maxTime && Date.now() - self.lastLoadDate >= self.conditions.maxTime;
+        return self.conditions?.maxTime && (Date.now() - self.lastLoadDate) >= self.conditions.maxTime;
     }
 
     private static maxTimeHandler(self: ClickhouseBuffer): void {
-        const rows = self.rows.splice(0, self.rows.length);
-        ClickhouseBuffer.flushToFiles(self, rows)
-            .finally(function () {
-                const numOfFiles = self.files.length >= self.maxFilesPerLoad ? self.maxFilesPerLoad : self.files.length;
-                if (!(numOfFiles > 0)) {
-                    return;
-                }
-                const files = self.files.splice(0, numOfFiles);
-                ClickhouseBuffer.loadToDatabase(self, files).finally();
-            });
+        if (ClickhouseBuffer.isConditionMet(self)) {
+            ClickhouseBuffer.flushToFilesAndLoadToDatabase(self).finally();
+        }
     }
 
     private static async flushToFiles(self: ClickhouseBuffer, rows: string[]): Promise<void> {
@@ -116,6 +109,20 @@ export class ClickhouseBuffer {
         for (const path of paths) {
             await rm(path, { force: true });
         }
+    }
+
+    private static async flushToFilesAndLoadToDatabase(self: ClickhouseBuffer) {
+        const rows = self.rows;
+        self.rows = [];
+        ClickhouseBuffer.flushToFiles(self, rows)
+            .then(function () {
+                const numOfFiles = self.files.length >= self.maxFilesPerLoad ? self.maxFilesPerLoad : self.files.length;
+                if (!(numOfFiles > 0)) {
+                    return;
+                }
+                const files = self.files.splice(0, numOfFiles);
+                ClickhouseBuffer.loadToDatabase(self, files).finally();
+            });
     }
 
     static async prepareDirectoryPath(mainDirectoryPath: string, database: string, table: string, fsMode: number): Promise<string> {
