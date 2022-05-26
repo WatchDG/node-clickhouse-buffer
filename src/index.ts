@@ -100,7 +100,7 @@ export class ClickhouseBuffer {
         const paths = files.map(function (filename) {
             return path.join(self.directoryPath, filename);
         });
-        const stream = filesToStream(Array.from(paths));
+        const stream = filesToStream(paths);
         await self.clickhouseClient.query({
             query: self.insertStatement,
             data: stream
