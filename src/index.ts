@@ -182,4 +182,12 @@ export class ClickhouseBuffer {
         }
         setImmediate(ClickhouseBuffer.flushToFiles, this, this.rows);
     }
+
+    fileNamesInMemory(): number {
+        return this.files.length;
+    }
+
+    rowsInMemory(): number {
+        return this.rows.length;
+    }
 }
