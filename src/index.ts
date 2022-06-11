@@ -47,7 +47,7 @@ export class ClickhouseBuffer {
     private readonly maxTimeTimer?: NodeJS.Timer;
     private lastLoadDate: number = Date.now();
 
-    private statRowsInFiles: number = 0;
+    private statRowsInFiles = 0;
 
     private readonly insertStatement: string;
 
@@ -81,7 +81,7 @@ export class ClickhouseBuffer {
         self.rows = [];
     }
 
-    private static async flushToFiles(self: ClickhouseBuffer, rows: string[], checkConditions: boolean = false): Promise<void> {
+    private static async flushToFiles(self: ClickhouseBuffer, rows: string[], checkConditions = false): Promise<void> {
         const rowsLength = rows.length;
 
         if (rowsLength > 0) {
