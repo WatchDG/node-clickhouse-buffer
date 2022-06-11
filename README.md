@@ -17,8 +17,10 @@ import {ClickhouseBuffer, DEFAULT_DATABASE} from "clickhouse-buffer";
     const database = DEFAULT_DATABASE;
     const table = 'events';
 
+    const directoryPath = await ClickhouseBuffer.prepareDirectoryPath('buffer', database, table, 0o777);
+
     const clickhouseBuffer = new ClickhouseBuffer({
-        directoryPath: await ClickhouseBuffer.prepareDirectoryPath('buffer', database, table, 0o777),
+        directoryPath,
         database,
         table
     });

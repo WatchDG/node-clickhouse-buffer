@@ -54,6 +54,7 @@ describe('clickhouse-buffer', function () {
 
         expect(ctx.clickhouseBuffer.rowsInMemory()).toBe(9);
         expect(ctx.clickhouseBuffer.filesInMemory()).toBe(0);
+        expect(ctx.clickhouseBuffer.rowsInFiles()).toBe(0);
 
         ctx.clickhouseBuffer.push([9]);
 
@@ -61,6 +62,7 @@ describe('clickhouse-buffer', function () {
 
         expect(ctx.clickhouseBuffer.rowsInMemory()).toBe(0);
         expect(ctx.clickhouseBuffer.filesInMemory()).toBe(1);
+        expect(ctx.clickhouseBuffer.rowsInFiles()).toBe(10);
 
         for (let i = 10; i <= 15; i++) {
             ctx.clickhouseBuffer.push([i]);
@@ -70,6 +72,7 @@ describe('clickhouse-buffer', function () {
 
         expect(ctx.clickhouseBuffer.rowsInMemory()).toBe(6);
         expect(ctx.clickhouseBuffer.filesInMemory()).toBe(1);
+        expect(ctx.clickhouseBuffer.rowsInFiles()).toBe(10);
 
         await setTimeout(6000);
 
@@ -96,5 +99,6 @@ describe('clickhouse-buffer', function () {
 
         expect(ctx.clickhouseBuffer.rowsInMemory()).toBe(0);
         expect(ctx.clickhouseBuffer.filesInMemory()).toBe(0);
+        expect(ctx.clickhouseBuffer.rowsInFiles()).toBe(0);
     });
 });
