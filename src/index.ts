@@ -1,3 +1,4 @@
+import { createBrotliCompress, createDeflate, createGzip } from "zlib";
 import path from 'path';
 import { mkdir, writeFile, rm, readdir } from 'fs/promises';
 import { hrtime } from 'process';
@@ -30,6 +31,7 @@ interface Options {
     fsMode?: number;
     conditions?: Conditions;
     fields?: FieldSettings[];
+    compressed?: 'gzip' | 'br' | 'deflate';
 }
 
 type columnType = string | number | Date | boolean;
@@ -40,6 +42,7 @@ export class ClickhouseBuffer {
     private readonly database: string;
     private readonly table: string;
     private readonly fields?: FieldSettings[];
+    private readonly compressed?: 'gzip' | 'br' | 'deflate';
 
     private readonly maxRowsPerFile: number = 1000;
     private readonly maxRowsInMemory: number = 1000;
@@ -102,8 +105,26 @@ export class ClickhouseBuffer {
                 const numBytesToFile = ClickhouseBuffer.calcBytes(rowsToFile);
                 const dataToFile = rowsToFile.join('\n') + '\n';
                 const filename = `${sortKeys}_${part}_r${numRowsToFile}_b${numBytesToFile}`;
-                await writeFile(path.join(self.directoryPath, filename), dataToFile, { mode: self.fsMode });
-                files.push(filename);
+
+                if (self.compressed === 'gzip') {
+                    const gzip = createGzip();
+                    gzip.write(dataToFile);
+                    await writeFile(path.join(self.directoryPath, filename + '.gz'), dataToFile, { mode: self.fsMode });
+                    files.push(filename + '.gz');
+                } else if (self.compressed === 'br') {
+                    const br = createBrotliCompress();
+                    br.write(dataToFile);
+                    await writeFile(path.join(self.directoryPath, filename + '.br'), dataToFile, { mode: self.fsMode });
+                    files.push(filename + '.br');
+                } else if (self.compressed === 'deflate') {
+                    const deflate = createDeflate();
+                    deflate.write(dataToFile);
+                    await writeFile(path.join(self.directoryPath, filename + '.df'), dataToFile, { mode: self.fsMode });
+                    files.push(filename + '.df');
+                } else {
+                    await writeFile(path.join(self.directoryPath, filename), dataToFile, { mode: self.fsMode });
+                    files.push(filename);
+                }
             }
             self.files.push(...files);
             self.statRowsInFiles += rowsLength;
@@ -140,7 +161,7 @@ export class ClickhouseBuffer {
     static getRowsInFiles(files: string[]) {
         let rowsInFiles = 0;
         for (const file of files) {
-            const parts = file.split('_').filter(function (part) {
+            const parts = file.split('.')[0].split('_').filter(function (part) {
                 return /^r\d+$/.test(part);
             });
             const rowsInFile = parseInt(parts[0].slice(1));
@@ -178,6 +199,9 @@ export class ClickhouseBuffer {
 
         if (options.fields) {
             this.fields = options.fields;
+        }
+        if (options.compressed) {
+            this.compressed = options.compressed;
         }
 
         this.database = options.database ?? DEFAULT_DATABASE;
