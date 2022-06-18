@@ -15,6 +15,10 @@ interface Conditions {
     maxRows?: number;
 }
 
+export interface FieldSettings {
+    name: string;
+}
+
 interface Options {
     clickhouseClient?: ClickhouseClientOptions;
     database?: string;
@@ -25,6 +29,7 @@ interface Options {
     directoryPath: string;
     fsMode?: number;
     conditions?: Conditions;
+    fields?: FieldSettings[];
 }
 
 type columnType = string | number | Date | boolean;
@@ -32,6 +37,9 @@ type columnType = string | number | Date | boolean;
 export class ClickhouseBuffer {
     private readonly directoryPath: string;
     private readonly fsMode: number = 0o777;
+    private readonly database: string;
+    private readonly table: string;
+    private readonly fields?: FieldSettings[];
 
     private readonly maxRowsPerFile: number = 1000;
     private readonly maxRowsInMemory: number = 1000;
@@ -112,6 +120,7 @@ export class ClickhouseBuffer {
     }
 
     private static async loadToDatabase(self: ClickhouseBuffer, files: string[]) {
+
         const rowsInFiles = ClickhouseBuffer.getRowsInFiles(files);
         const paths = files.map(function (filename) {
             return path.join(self.directoryPath, filename);
@@ -167,7 +176,17 @@ export class ClickhouseBuffer {
 
         this.clickhouseClient = new ClickhouseClient(options.clickhouseClient);
 
-        this.insertStatement = `INSERT INTO "${options.database ?? DEFAULT_DATABASE}"."${options.table}" FORMAT JSONCompactEachRow`;
+        if (options.fields) {
+            this.fields = options.fields;
+        }
+
+        this.database = options.database ?? DEFAULT_DATABASE;
+        this.table = options.table;
+
+        const columns = this.fields ? ' (' + this.fields.map(function (fieldSettings) {
+            return `"${fieldSettings.name}"`;
+        }).join(',') + ')' : '';
+        this.insertStatement = `INSERT INTO "${this.database}"."${this.table}"${columns} FORMAT JSONCompactEachRow`;
 
         if (this.conditions.maxTime) {
             this.maxTimeTimer = setInterval(ClickhouseBuffer.maxTimeHandler, this.conditions.maxTime, this).unref();
