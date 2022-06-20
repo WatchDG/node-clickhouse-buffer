@@ -19,7 +19,8 @@ describe('compressed: gzip', function () {
             conditions: {
                 maxRows: 10
             },
-            compressed: 'gzip'
+            compressed: 'gzip',
+            compressedFiles: "br"
         });
 
         await clickhouseBuffer.clickhouseClient.query(
@@ -100,7 +101,8 @@ describe('compressed: br', function () {
             conditions: {
                 maxRows: 10
             },
-            compressed: 'br'
+            compressed: 'br',
+            compressedFiles: "deflate"
         });
 
         await clickhouseBuffer.clickhouseClient.query(
@@ -181,7 +183,8 @@ describe('compressed: deflate', function () {
             conditions: {
                 maxRows: 10
             },
-            compressed: 'deflate'
+            compressed: 'deflate',
+            compressedFiles: "gzip"
         });
 
         await clickhouseBuffer.clickhouseClient.query(

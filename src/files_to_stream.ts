@@ -1,9 +1,8 @@
 import { PassThrough } from "stream";
 import { createReadStream } from "fs";
+import { createBrotliDecompress, createGunzip, createInflate } from "zlib";
 
-import type { ReadStream } from 'fs';
-import type { TransformOptions } from 'stream';
-
+import type { TransformOptions, Readable } from 'stream';
 
 interface ReadStreamOptions {
     highWaterMark?: number;
@@ -14,9 +13,28 @@ export interface FilesToStreamOptions {
     readStream?: ReadStreamOptions;
 }
 
-function addFilesToStream(passThrough: PassThrough, files: string[], options: ReadStreamOptions): ReadStream {
+function getStreamDecoder(fileExtension: 'gz' | 'br' | 'deflate' | string) {
+    switch (fileExtension) {
+        case 'gz':
+            return createGunzip();
+        case "br":
+            return createBrotliDecompress();
+        case "deflate":
+            return createInflate();
+    }
+}
+
+function addFilesToStream(passThrough: PassThrough, files: string[], options: ReadStreamOptions): Readable {
     const file = files.shift();
-    const stream = createReadStream(file, options);
+    const fileExtension = file.split('.').pop();
+
+    let stream: Readable = createReadStream(file, options);
+
+    const decoder = getStreamDecoder(fileExtension);
+    if (decoder) {
+        stream = stream.pipe(decoder);
+    }
+
     if (files.length > 0) {
         stream.pipe(passThrough, { end: false });
         stream.once('end', function () {
@@ -33,11 +51,14 @@ export function filesToStream(files: string[], options?: FilesToStreamOptions): 
         readableHighWaterMark: 65536,
         writableHighWaterMark: 65536
     }, options?.passThrough);
+
     const readStreamOptions = Object.assign({}, options?.readStream);
 
     const passThrough = new PassThrough(passThroughOptions);
+
     if (files.length > 0) {
         addFilesToStream(passThrough, files, readStreamOptions);
     }
+
     return passThrough;
 }

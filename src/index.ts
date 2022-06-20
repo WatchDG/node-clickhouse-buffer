@@ -10,6 +10,7 @@ import { filesToStream } from "./files_to_stream";
 import { Mutex } from "./mutex";
 
 import type { ClickhouseClientOptions } from "@watchdg/clickhouse-client";
+import type { Readable } from "stream";
 
 interface Conditions {
     maxTime?: number;
@@ -32,6 +33,7 @@ interface Options {
     conditions?: Conditions;
     fields?: FieldSettings[];
     compressed?: 'gzip' | 'br' | 'deflate';
+    compressedFiles?: 'gzip' | 'br' | 'deflate';
 }
 
 type columnType = string | number | Date | boolean;
@@ -43,6 +45,7 @@ export class ClickhouseBuffer {
     private readonly table: string;
     private readonly fields?: FieldSettings[];
     private readonly compressed?: 'gzip' | 'br' | 'deflate';
+    private readonly compressedFiles?: 'gzip' | 'br' | 'deflate';
 
     private readonly maxRowsPerFile: number = 1000;
     private readonly maxRowsInMemory: number = 1000;
@@ -103,28 +106,28 @@ export class ClickhouseBuffer {
                 const numRowsToFile = rows.length >= self.maxRowsPerFile ? self.maxRowsPerFile : rows.length;
                 const rowsToFile = rows.splice(0, numRowsToFile);
                 const numBytesToFile = ClickhouseBuffer.calcBytes(rowsToFile);
-                const dataToFile = rowsToFile.join('\n') + '\n';
-                const filename = `${sortKeys}_${part}_r${numRowsToFile}_b${numBytesToFile}`;
+                let dataToFile: string | Readable = rowsToFile.join('\n') + '\n';
+                let filename = `${sortKeys}_${part}_r${numRowsToFile}_b${numBytesToFile}`;
 
-                if (self.compressed === 'gzip') {
+                if (self.compressedFiles === 'gzip') {
                     const gzip = createGzip();
-                    gzip.write(dataToFile);
-                    await writeFile(path.join(self.directoryPath, filename + '.gz'), dataToFile, { mode: self.fsMode });
-                    files.push(filename + '.gz');
-                } else if (self.compressed === 'br') {
+                    gzip.end(dataToFile);
+                    dataToFile = gzip;
+                    filename += '.gz';
+                } else if (self.compressedFiles === 'br') {
                     const br = createBrotliCompress();
-                    br.write(dataToFile);
-                    await writeFile(path.join(self.directoryPath, filename + '.br'), dataToFile, { mode: self.fsMode });
-                    files.push(filename + '.br');
-                } else if (self.compressed === 'deflate') {
+                    br.end(dataToFile);
+                    dataToFile = br;
+                    filename += '.br';
+                } else if (self.compressedFiles === 'deflate') {
                     const deflate = createDeflate();
-                    deflate.write(dataToFile);
-                    await writeFile(path.join(self.directoryPath, filename + '.df'), dataToFile, { mode: self.fsMode });
-                    files.push(filename + '.df');
-                } else {
-                    await writeFile(path.join(self.directoryPath, filename), dataToFile, { mode: self.fsMode });
-                    files.push(filename);
+                    deflate.end(dataToFile);
+                    dataToFile = deflate;
+                    filename += '.deflate';
                 }
+
+                await writeFile(path.join(self.directoryPath, filename), dataToFile, { mode: self.fsMode });
+                files.push(filename);
             }
             self.files.push(...files);
             self.statRowsInFiles += rowsLength;
@@ -140,16 +143,34 @@ export class ClickhouseBuffer {
         }
     }
 
-    private static async loadToDatabase(self: ClickhouseBuffer, files: string[]) {
+    private static getStreamEncoder(contentEncoding?: 'gzip' | 'br' | 'deflate') {
+        switch (contentEncoding) {
+            case 'gzip':
+                return createGzip();
+            case 'br':
+                return createBrotliCompress();
+            case 'deflate':
+                return createDeflate();
+        }
+    }
 
+    private static async loadToDatabase(self: ClickhouseBuffer, files: string[]) {
         const rowsInFiles = ClickhouseBuffer.getRowsInFiles(files);
         const paths = files.map(function (filename) {
             return path.join(self.directoryPath, filename);
         });
-        const stream = filesToStream(Array.from(paths));
+
+        let stream = filesToStream(Array.from(paths));
+
+        const encoder = ClickhouseBuffer.getStreamEncoder(self.compressed);
+        if (encoder) {
+            stream = stream.pipe(encoder);
+        }
+
         await self.clickhouseClient.query({
             query: self.insertStatement,
-            data: stream
+            data: stream,
+            compressed: self.compressed
         });
         self.lastLoadDate = Date.now();
         self.statRowsInFiles -= rowsInFiles;
@@ -202,6 +223,9 @@ export class ClickhouseBuffer {
         }
         if (options.compressed) {
             this.compressed = options.compressed;
+        }
+        if (options.compressedFiles) {
+            this.compressedFiles = options.compressedFiles;
         }
 
         this.database = options.database ?? DEFAULT_DATABASE;
