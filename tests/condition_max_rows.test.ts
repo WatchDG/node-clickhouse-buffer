@@ -2,7 +2,7 @@ import { ClickhouseBuffer, DEFAULT_DATABASE } from '../src';
 import { setTimeout } from "timers/promises";
 import { mkdtemp } from 'fs/promises';
 
-describe('clickhouse-buffer', function () {
+describe('condition maxRows', function () {
     const ctx: { clickhouseBuffer?: ClickhouseBuffer, directoryPath?: string } = {};
     const database = DEFAULT_DATABASE;
     const table = 'events';
