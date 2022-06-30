@@ -39,7 +39,7 @@ describe('condition maxRows', function () {
 
     afterAll(async function () {
         if (ctx.clickhouseBuffer) {
-            ctx.clickhouseBuffer.release();
+            await ctx.clickhouseBuffer.release();
         }
     });
 

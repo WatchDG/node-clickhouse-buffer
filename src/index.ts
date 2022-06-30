@@ -85,9 +85,15 @@ export class ClickhouseBuffer {
         }, 0);
     }
 
-    private static isConditionMet(self: ClickhouseBuffer): boolean {
-        return (self.conditions?.maxTime && (Date.now() - self.lastLoadDate) >= self.conditions.maxTime) ||
-            (self.conditions?.maxRows && self.statRowsInFiles >= self.conditions.maxRows);
+    private static getStreamEncoder(contentEncoding?: 'gzip' | 'br' | 'deflate') {
+        switch (contentEncoding) {
+            case 'gzip':
+                return createGzip();
+            case 'br':
+                return createBrotliCompress();
+            case 'deflate':
+                return createDeflate();
+        }
     }
 
     private static maxTimeHandler(self: ClickhouseBuffer): void {
@@ -95,6 +101,11 @@ export class ClickhouseBuffer {
         if (rows.length > 0) {
             setImmediate(ClickhouseBuffer.flushToFiles, self, rows, true);
         }
+    }
+
+    private static isConditionMet(self: ClickhouseBuffer): boolean {
+        return (self.conditions?.maxTime && (Date.now() - self.lastLoadDate) >= self.conditions.maxTime) ||
+            (self.conditions?.maxRows && self.statRowsInFiles >= self.conditions.maxRows);
     }
 
     private static async flushToFiles(self: ClickhouseBuffer, rows: string[], checkConditions = false): Promise<void> {
@@ -142,51 +153,36 @@ export class ClickhouseBuffer {
         }
     }
 
-    private static getStreamEncoder(contentEncoding?: 'gzip' | 'br' | 'deflate') {
-        switch (contentEncoding) {
-            case 'gzip':
-                return createGzip();
-            case 'br':
-                return createBrotliCompress();
-            case 'deflate':
-                return createDeflate();
-        }
-    }
-
     private static async loadToDatabase(self: ClickhouseBuffer, files: string[]) {
         self.lastLoadDate = Date.now();
 
-        const paths = files.map(function (filename) {
-            return path.join(self.directoryPath, filename);
-        });
+        await self.loadToDatabaseMutex.acquire()
+            .then(async function () {
+                const paths = files.map(function (filename) {
+                    return path.join(self.directoryPath, filename);
+                });
 
-        await self.loadToDatabaseMutex.acquire();
+                let stream = filesToStream(Array.from(paths));
 
-        try {
+                const encoder = ClickhouseBuffer.getStreamEncoder(self.compressed);
 
-            let stream = filesToStream(Array.from(paths));
+                if (encoder) {
+                    stream = stream.pipe(encoder);
+                }
 
-            const encoder = ClickhouseBuffer.getStreamEncoder(self.compressed);
+                await self.clickhouseClient.query({
+                    query: self.insertStatement,
+                    data: stream,
+                    compressed: self.compressed
+                });
 
-            if (encoder) {
-                stream = stream.pipe(encoder);
-            }
-
-            await self.clickhouseClient.query({
-                query: self.insertStatement,
-                data: stream,
-                compressed: self.compressed
+                for (const path of paths) {
+                    await rm(path, { force: true });
+                }
+            })
+            .finally(function () {
+                self.loadToDatabaseMutex.release();
             });
-
-        } catch (error) {
-            //
-        }
-
-        self.loadToDatabaseMutex.release();
-
-        for (const path of paths) {
-            await rm(path, { force: true });
-        }
     }
 
     static getRowsInFiles(files: string[]) {
@@ -280,12 +276,13 @@ export class ClickhouseBuffer {
         }
     }
 
-    release() {
-        this.clickhouseClient.close().finally();
+    async release() {
         if (this.conditions.maxTime) {
             clearInterval(this.maxTimeTimer);
         }
-        setImmediate(ClickhouseBuffer.flushToFiles, this, this.rows);
+        const rows = this.resetRows();
+        await ClickhouseBuffer.flushToFiles(this, rows, false);
+        await this.clickhouseClient.close();
     }
 
     filesInMemory(): number {
