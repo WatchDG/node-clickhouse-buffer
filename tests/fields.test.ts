@@ -1,6 +1,6 @@
 import { ClickhouseBuffer, DEFAULT_DATABASE } from '../src';
 import { setTimeout } from "timers/promises";
-import { mkdtemp } from 'fs/promises';
+import { mkdir, mkdtemp } from 'fs/promises';
 
 describe('clickhouse-buffer', function () {
 
@@ -11,6 +11,7 @@ describe('clickhouse-buffer', function () {
         };
 
         beforeAll(async function () {
+            await mkdir('buffer', { recursive: true });
             const mainDirectoryPath = await mkdtemp('buffer/tmp-');
             const directoryPath = await ClickhouseBuffer.prepareDirectoryPath(mainDirectoryPath, ctx.database, ctx.table, 0o777);
 

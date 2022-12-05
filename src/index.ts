@@ -38,6 +38,10 @@ interface Options {
 
 type columnType = string | number | Date | boolean;
 
+function removeFiles(paths: string[]): Promise<void[]> {
+    return Promise.all(paths.map(path => rm(path, { force: true })));
+}
+
 export class ClickhouseBuffer {
     private readonly directoryPath: string;
     private readonly fsMode: number = 0o777;
@@ -176,9 +180,7 @@ export class ClickhouseBuffer {
                     compressed: self.compressed
                 });
 
-                for (const path of paths) {
-                    await rm(path, { force: true });
-                }
+                await removeFiles(paths);
             })
             .finally(function () {
                 self.loadToDatabaseMutex.release();
