@@ -16,7 +16,7 @@
     "clean": "yarn rimraf lib",
     "lint": "yarn eslint . --ext .ts",
     "test": "yarn jest",
-    "build": "Yarn clean && yarn tsc",
+    "build": "yarn clean && yarn tsc",
     "prepare": "yarn run lint && yarn run build"
   },
   "dependencies": {

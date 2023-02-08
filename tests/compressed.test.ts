@@ -1,4 +1,4 @@
-import { ClickhouseBuffer, DEFAULT_DATABASE } from '../src';
+import { ClickhouseBuffer, DEFAULT_DATABASE, CompressionFormat } from '../src';
 import { setTimeout } from "timers/promises";
 import { mkdir, mkdtemp } from 'fs/promises';
 
@@ -20,8 +20,8 @@ describe('compressed: gzip', function () {
             conditions: {
                 maxRows: 10
             },
-            compressed: 'gzip',
-            compressedFiles: "br"
+            compressed: CompressionFormat.GZIP,
+            compressedFiles: CompressionFormat.BROTLI
         });
 
         await clickhouseBuffer.clickhouseClient.query(
@@ -102,8 +102,8 @@ describe('compressed: br', function () {
             conditions: {
                 maxRows: 10
             },
-            compressed: 'br',
-            compressedFiles: "deflate"
+            compressed: CompressionFormat.BROTLI,
+            compressedFiles: CompressionFormat.DEFLATE
         });
 
         await clickhouseBuffer.clickhouseClient.query(
@@ -184,8 +184,8 @@ describe('compressed: deflate', function () {
             conditions: {
                 maxRows: 10
             },
-            compressed: 'deflate',
-            compressedFiles: "gzip"
+            compressed: CompressionFormat.DEFLATE,
+            compressedFiles: CompressionFormat.GZIP
         });
 
         await clickhouseBuffer.clickhouseClient.query(

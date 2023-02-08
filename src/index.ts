@@ -1,16 +1,17 @@
-import { createBrotliCompress, createDeflate, createGzip } from "zlib";
 import path from 'path';
 import { mkdir, writeFile, rm, readdir } from 'fs/promises';
 import { hrtime } from 'process';
 import { ClickhouseClient, DEFAULT_DATABASE } from "@watchdg/clickhouse-client";
 
 export { DEFAULT_DATABASE } from "@watchdg/clickhouse-client";
+export { CompressionFormat } from './encoder_decoder';
 
 import { filesToStream } from "./files_to_stream";
 import { Mutex } from "./mutex";
 
 import type { ClickhouseClientOptions } from "@watchdg/clickhouse-client";
 import type { Readable } from "stream";
+import { CompressionFormat, getEncoder } from "./encoder_decoder";
 
 interface Conditions {
     maxTime?: number;
@@ -32,8 +33,8 @@ interface Options {
     fsMode?: number;
     conditions?: Conditions;
     fields?: FieldSettings[];
-    compressed?: 'gzip' | 'br' | 'deflate';
-    compressedFiles?: 'gzip' | 'br' | 'deflate';
+    compressed?: CompressionFormat;
+    compressedFiles?: CompressionFormat;
 }
 
 type columnType = string | number | Date | boolean;
@@ -48,8 +49,8 @@ export class ClickhouseBuffer {
     private readonly database: string;
     private readonly table: string;
     private readonly fields?: FieldSettings[];
-    private readonly compressed?: 'gzip' | 'br' | 'deflate';
-    private readonly compressedFiles?: 'gzip' | 'br' | 'deflate';
+    private readonly compressed?: CompressionFormat;
+    private readonly compressedFiles?: CompressionFormat;
 
     private readonly maxRowsPerFile: number = 1000;
     private readonly maxRowsInMemory: number = 1000;
@@ -89,17 +90,6 @@ export class ClickhouseBuffer {
         }, 0);
     }
 
-    private static getStreamEncoder(contentEncoding?: 'gzip' | 'br' | 'deflate') {
-        switch (contentEncoding) {
-            case 'gzip':
-                return createGzip();
-            case 'br':
-                return createBrotliCompress();
-            case 'deflate':
-                return createDeflate();
-        }
-    }
-
     private static maxTimeHandler(self: ClickhouseBuffer): void {
         const rows = self.resetRows();
         if (rows.length > 0) {
@@ -124,23 +114,13 @@ export class ClickhouseBuffer {
             const rowsToFile = rows.splice(0, numRowsToFile);
             const numBytesToFile = ClickhouseBuffer.calcBytes(rowsToFile);
             let dataToFile: string | Readable = rowsToFile.join('\n') + '\n';
-            let filename = `${sortKeys}_${part}_r${numRowsToFile}_b${numBytesToFile}`;
+            let filename = `${sortKeys}_p${part}_r${numRowsToFile}_b${numBytesToFile}`;
 
-            if (self.compressedFiles === 'gzip') {
-                const gzip = createGzip();
-                gzip.end(dataToFile);
-                dataToFile = gzip;
-                filename += '.gz';
-            } else if (self.compressedFiles === 'br') {
-                const br = createBrotliCompress();
-                br.end(dataToFile);
-                dataToFile = br;
-                filename += '.br';
-            } else if (self.compressedFiles === 'deflate') {
-                const deflate = createDeflate();
-                deflate.end(dataToFile);
-                dataToFile = deflate;
-                filename += '.deflate';
+            const encoder = getEncoder(self.compressedFiles);
+            if (encoder) {
+                encoder.end(dataToFile);
+                dataToFile = encoder;
+                filename += `.${self.compressedFiles}`;
             }
 
             await writeFile(path.join(self.directoryPath, filename), dataToFile, { mode: self.fsMode });
@@ -168,7 +148,7 @@ export class ClickhouseBuffer {
 
                 let stream = filesToStream(Array.from(paths));
 
-                const encoder = ClickhouseBuffer.getStreamEncoder(self.compressed);
+                const encoder = getEncoder(self.compressed);
 
                 if (encoder) {
                     stream = stream.pipe(encoder);

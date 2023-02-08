@@ -1,8 +1,9 @@
 import { PassThrough } from "stream";
 import { createReadStream } from "fs";
-import { createBrotliDecompress, createGunzip, createInflate } from "zlib";
 
 import type { TransformOptions, Readable } from 'stream';
+
+import { CompressionFormat, getDecoder } from "./encoder_decoder";
 
 interface ReadStreamOptions {
     highWaterMark?: number;
@@ -13,24 +14,14 @@ export interface FilesToStreamOptions {
     readStream?: ReadStreamOptions;
 }
 
-function getStreamDecoder(fileExtension: 'gz' | 'br' | 'deflate' | string) {
-    switch (fileExtension) {
-        case 'gz':
-            return createGunzip();
-        case "br":
-            return createBrotliDecompress();
-        case "deflate":
-            return createInflate();
-    }
-}
-
 function addFilesToStream(passThrough: PassThrough, files: string[], options: ReadStreamOptions): Readable {
     const file = files.shift();
     const fileExtension = file.split('.').pop();
 
     let stream: Readable = createReadStream(file, options);
 
-    const decoder = getStreamDecoder(fileExtension);
+    const decoder = getDecoder(fileExtension as CompressionFormat);
+
     if (decoder) {
         stream = stream.pipe(decoder);
     }
