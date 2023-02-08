@@ -1,6 +1,5 @@
 import path from 'path';
-import { mkdir, writeFile, rm, readdir } from 'fs/promises';
-import { hrtime } from 'process';
+import { mkdir, rm, readdir } from 'fs/promises';
 import { ClickhouseClient, DEFAULT_DATABASE } from "@watchdg/clickhouse-client";
 
 export { DEFAULT_DATABASE } from "@watchdg/clickhouse-client";
@@ -10,8 +9,8 @@ import { filesToStream } from "./files_to_stream";
 import { Mutex } from "./mutex";
 
 import type { ClickhouseClientOptions } from "@watchdg/clickhouse-client";
-import type { Readable } from "stream";
 import { CompressionFormat, getEncoder } from "./encoder_decoder";
+import { rowsToFiles } from "./rows_to_files";
 
 interface Conditions {
     maxTime?: number;
@@ -66,7 +65,7 @@ export class ClickhouseBuffer {
     private readonly maxTimeTimer?: NodeJS.Timer;
     private lastLoadDate: number = Date.now();
 
-    private statRowsInFiles = 0;
+    private statsRowsInFiles = 0;
 
     private readonly insertStatement: string;
 
@@ -84,12 +83,6 @@ export class ClickhouseBuffer {
         return JSON.stringify(row);
     }
 
-    private static calcBytes(rows: string[]): number {
-        return rows.reduce(function (bytes, row) {
-            return bytes + Buffer.byteLength(row);
-        }, 0);
-    }
-
     private static maxTimeHandler(self: ClickhouseBuffer): void {
         const rows = self.resetRows();
         if (rows.length > 0) {
@@ -99,35 +92,20 @@ export class ClickhouseBuffer {
 
     private static isConditionMet(self: ClickhouseBuffer): boolean {
         return (self.conditions?.maxTime && (Date.now() - self.lastLoadDate) >= self.conditions.maxTime) ||
-            (self.conditions?.maxRows && self.statRowsInFiles >= self.conditions.maxRows);
+            (self.conditions?.maxRows && self.statsRowsInFiles >= self.conditions.maxRows);
     }
 
     private static async flushToFiles(self: ClickhouseBuffer, rows: string[], checkConditions = false): Promise<void> {
-        const rowsLength = rows.length;
 
-        const files = [];
-        const sortKeys = `${Date.now() / 1000 | 0}_${(hrtime.bigint() % 10_000_000_000n).toString(10)}`;
-        const parts = Math.ceil(rowsLength / self.maxRowsPerFile);
+        const { files, stats } = await rowsToFiles(rows, {
+            directory: self.directoryPath,
+            fsMode: self.fsMode,
+            maxRowsPerFile: self.maxRowsPerFile,
+            compression: self.compressedFiles
+        });
 
-        for (let part = 0; part < parts; part++) {
-            const numRowsToFile = rows.length >= self.maxRowsPerFile ? self.maxRowsPerFile : rows.length;
-            const rowsToFile = rows.splice(0, numRowsToFile);
-            const numBytesToFile = ClickhouseBuffer.calcBytes(rowsToFile);
-            let dataToFile: string | Readable = rowsToFile.join('\n') + '\n';
-            let filename = `${sortKeys}_p${part}_r${numRowsToFile}_b${numBytesToFile}`;
-
-            const encoder = getEncoder(self.compressedFiles);
-            if (encoder) {
-                encoder.end(dataToFile);
-                dataToFile = encoder;
-                filename += `.${self.compressedFiles}`;
-            }
-
-            await writeFile(path.join(self.directoryPath, filename), dataToFile, { mode: self.fsMode });
-            files.push(filename);
-        }
         self.files.push(...files);
-        self.statRowsInFiles += rowsLength;
+        self.statsRowsInFiles += stats.rows;
 
         if (checkConditions && ClickhouseBuffer.isConditionMet(self)) {
             const files = self.resetFiles();
@@ -238,7 +216,7 @@ export class ClickhouseBuffer {
     private resetFiles(): string[] {
         const files = this.files;
         this.files = [];
-        this.statRowsInFiles = 0;
+        this.statsRowsInFiles = 0;
         return files;
     }
 
@@ -276,6 +254,6 @@ export class ClickhouseBuffer {
     }
 
     rowsInFiles(): number {
-        return this.statRowsInFiles;
+        return this.statsRowsInFiles;
     }
 }
