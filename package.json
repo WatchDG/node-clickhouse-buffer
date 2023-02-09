@@ -20,7 +20,7 @@
     "prepare": "yarn run lint && yarn run build"
   },
   "dependencies": {
-    "@watchdg/clickhouse-client": "^1.13.8"
+    "@watchdg/clickhouse-client": "^1.14.0"
   },
   "devDependencies": {
     "@types/jest": "^29.4.0",

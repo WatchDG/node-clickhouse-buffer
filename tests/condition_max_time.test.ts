@@ -15,6 +15,10 @@ describe('clickhouse-buffer', function () {
         const directoryPath = await ClickhouseBuffer.prepareDirectoryPath(mainDirectoryPath, database, table, 0o777);
 
         const clickhouseBuffer = new ClickhouseBuffer({
+            clickhouseClient: {
+                user: 'new_user',
+                password: 'new_password'
+            },
             directoryPath,
             database,
             table,
