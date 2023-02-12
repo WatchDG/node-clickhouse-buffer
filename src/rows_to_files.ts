@@ -1,8 +1,9 @@
 import { hrtime } from "process";
 import { Readable } from "stream";
-import { CompressionFormat, getEncoder } from "./encoder_decoder";
 import { writeFile } from "fs/promises";
 import path from "path";
+
+import { CompressionFormat, getEncoder } from "./encoder_decoder";
 
 function calculateBytes(rows: string[]): number {
     return rows.reduce(function (bytes, row) {

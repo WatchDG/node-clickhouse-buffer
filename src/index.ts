@@ -7,10 +7,12 @@ export { CompressionFormat } from './encoder_decoder';
 
 import { filesToStream } from "./files_to_stream";
 import { Mutex } from "./mutex";
+import { DEFAULT_RETRIES_OPTIONS, withRetries } from "./retries";
 
 import type { ClickhouseClientOptions } from "@watchdg/clickhouse-client";
 import { CompressionFormat, getEncoder } from "./encoder_decoder";
 import { rowsToFiles } from "./rows_to_files";
+import { IRetriesOptions } from "./retries";
 
 interface Conditions {
     maxTime?: number;
@@ -34,6 +36,7 @@ interface Options {
     fields?: FieldSettings[];
     compressed?: CompressionFormat;
     compressedFiles?: CompressionFormat;
+    retries?: IRetriesOptions;
 }
 
 type columnType = string | number | Date | boolean;
@@ -43,6 +46,7 @@ function removeFiles(paths: string[]): Promise<void[]> {
 }
 
 export class ClickhouseBuffer {
+    private readonly options: Options;
     private readonly directoryPath: string;
     private readonly fsMode: number = 0o777;
     private readonly database: string;
@@ -50,6 +54,7 @@ export class ClickhouseBuffer {
     private readonly fields?: FieldSettings[];
     private readonly compressed?: CompressionFormat;
     private readonly compressedFiles?: CompressionFormat;
+    private readonly retriesOptions: IRetriesOptions = DEFAULT_RETRIES_OPTIONS;
 
     private readonly maxRowsPerFile: number = 1000;
     private readonly maxRowsInMemory: number = 1000;
@@ -124,19 +129,35 @@ export class ClickhouseBuffer {
                     return path.join(self.directoryPath, filename);
                 });
 
-                let stream = filesToStream(Array.from(paths));
+                await withRetries(self.retriesOptions, async function () {
+                    let stream = filesToStream(Array.from(paths));
 
-                const encoder = getEncoder(self.compressed);
+                    const encoder = getEncoder(self.compressed);
 
-                if (encoder) {
-                    stream = stream.pipe(encoder);
-                }
+                    if (encoder) {
+                        stream = stream.pipe(encoder);
+                    }
 
-                await self.clickhouseClient.query({
-                    query: self.insertStatement,
-                    data: stream,
-                    compressed: self.compressed
-                });
+                    await self.clickhouseClient.query({
+                        query: self.insertStatement,
+                        data: stream,
+                        compressed: self.compressed
+                    });
+                }, null);
+
+                // let stream = filesToStream(Array.from(paths));
+                //
+                // const encoder = getEncoder(self.compressed);
+                //
+                // if (encoder) {
+                //     stream = stream.pipe(encoder);
+                // }
+                //
+                // await self.clickhouseClient.query({
+                //     query: self.insertStatement,
+                //     data: stream,
+                //     compressed: self.compressed
+                // });
 
                 await removeFiles(paths);
             })
@@ -164,6 +185,10 @@ export class ClickhouseBuffer {
     }
 
     constructor(options: Options) {
+        this.options = options;
+        if (options.retries) {
+            this.retriesOptions = options.retries;
+        }
         if (options.maxRowsInMemory) {
             this.maxRowsInMemory = options.maxRowsInMemory;
         }
