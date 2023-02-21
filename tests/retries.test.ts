@@ -1,4 +1,4 @@
-import { withRetries } from "../lib/retries";
+import { DEFAULT_RETRIES_OPTIONS, withRetries } from "../lib/retries";
 
 describe('retries', function () {
     it('with default options', async function () {
@@ -13,7 +13,7 @@ describe('retries', function () {
             return x;
         }
 
-        await expect(withRetries(undefined, testFunction, null)).rejects.toEqual(1);
+        await expect(withRetries(DEFAULT_RETRIES_OPTIONS, testFunction, null)).rejects.toEqual(1);
     });
 
     it('with custom options', async function () {
