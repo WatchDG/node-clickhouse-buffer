@@ -1,6 +1,6 @@
 {
   "name": "clickhouse-buffer",
-  "version": "2.2.3",
+  "version": "2.3.0",
   "keywords": [
     "clickhouse",
     "database",
