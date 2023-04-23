@@ -1,5 +1,5 @@
 import path from 'path';
-import { mkdir, rm, readdir } from 'fs/promises';
+import { mkdir, readdir } from 'fs/promises';
 import { ClickhouseClient, DEFAULT_DATABASE } from "@watchdg/clickhouse-client";
 
 export { DEFAULT_DATABASE } from "@watchdg/clickhouse-client";
@@ -8,11 +8,13 @@ export { CompressionFormat } from './encoder_decoder';
 import { filesToStream } from "./files_to_stream";
 import { Mutex } from "./mutex";
 import { DEFAULT_RETRIES_OPTIONS, withRetries } from "./retries";
+import type { ColumnType } from "./types";
 
 import type { ClickhouseClientOptions } from "@watchdg/clickhouse-client";
 import { CompressionFormat, getEncoder } from "./encoder_decoder";
 import { rowsToFiles } from "./rows_to_files";
 import { IRetriesOptions } from "./retries";
+import { fmtRowJSON, removeFiles } from "./utils";
 
 interface Conditions {
     maxTime?: number;
@@ -39,11 +41,6 @@ interface Options {
     retries?: IRetriesOptions;
 }
 
-type columnType = string | number | Date | boolean;
-
-function removeFiles(paths: string[]): Promise<void[]> {
-    return Promise.all(paths.map(path => rm(path, { force: true })));
-}
 
 export class ClickhouseBuffer {
     private readonly options: Options;
@@ -76,18 +73,6 @@ export class ClickhouseBuffer {
 
     readonly clickhouseClient: ClickhouseClient;
 
-    private static fmtRow(row: Array<columnType>): string {
-        for (let i = 0, l = row.length; i < l; i++) {
-            const columnValue = row[i];
-            if (columnValue instanceof Date) {
-                row[i] = columnValue.getTime() / 1000 | 0;
-            } else if (typeof columnValue == 'boolean') {
-                row[i] = Number(columnValue);
-            }
-        }
-        return JSON.stringify(row);
-    }
-
     private static maxTimeHandler(self: ClickhouseBuffer): void {
         const rows = self.resetRows();
         if (rows.length > 0) {
@@ -101,7 +86,6 @@ export class ClickhouseBuffer {
     }
 
     private static async flushToFiles(self: ClickhouseBuffer, rows: string[], checkConditions = false): Promise<void> {
-
         const { files, stats } = await rowsToFiles(rows, {
             directory: self.directoryPath,
             fsMode: self.fsMode,
@@ -144,20 +128,6 @@ export class ClickhouseBuffer {
                         compressed: self.compressed
                     });
                 }, null);
-
-                // let stream = filesToStream(Array.from(paths));
-                //
-                // const encoder = getEncoder(self.compressed);
-                //
-                // if (encoder) {
-                //     stream = stream.pipe(encoder);
-                // }
-                //
-                // await self.clickhouseClient.query({
-                //     query: self.insertStatement,
-                //     data: stream,
-                //     compressed: self.compressed
-                // });
 
                 await removeFiles(paths);
             })
@@ -245,8 +215,8 @@ export class ClickhouseBuffer {
         return files;
     }
 
-    push(row: Array<columnType>): void {
-        const rowValue = ClickhouseBuffer.fmtRow(row);
+    push(row: Array<ColumnType>): void {
+        const rowValue = fmtRowJSON(row);
         this.rows.push(rowValue);
         if (this.rows.length >= this.maxRowsInMemory) {
             const rows = this.resetRows();
